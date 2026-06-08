@@ -37,6 +37,34 @@
           <el-icon><Bell /></el-icon>
           <template #title>公告管理</template>
         </el-menu-item>
+        <el-sub-menu index="inspection">
+          <template #title>
+            <el-icon><DataBoard /></el-icon>
+            <span>巡检管理</span>
+          </template>
+          <el-menu-item index="/admin/inspection-plans">
+            <el-icon><Document /></el-icon>
+            <template #title>巡检计划</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/inspection-records">
+            <el-icon><Tickets /></el-icon>
+            <template #title>巡检记录</template>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="materials">
+          <template #title>
+            <el-icon><Box /></el-icon>
+            <span>物料管理</span>
+          </template>
+          <el-menu-item index="/admin/materials">
+            <el-icon><Goods /></el-icon>
+            <template #title>库存管理</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/material-stats">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>消耗统计</template>
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
       <div class="p-4 border-t border-primary-700">
         <el-button
@@ -117,7 +145,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, User, SwitchButton } from '@element-plus/icons-vue'
+import { Bell, User, SwitchButton, DataBoard, Document, Tickets, Box, Goods, TrendCharts } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
@@ -126,7 +154,16 @@ const router = useRouter()
 
 const sidebarCollapsed = ref(false)
 
-const activeMenu = computed(() => route.path)
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path.startsWith('/admin/inspection-')) {
+    return '/admin/inspection-plans'
+  }
+  if (path.startsWith('/admin/material-') || path.startsWith('/admin/materials')) {
+    return '/admin/materials'
+  }
+  return path
+})
 
 const breadcrumbMap: Record<string, { name: string; path: string }[]> = {
   '/admin': [{ name: '仪表盘', path: '/admin' }],
@@ -141,6 +178,26 @@ const breadcrumbMap: Record<string, { name: string; path: string }[]> = {
   '/admin/announcements': [
     { name: '仪表盘', path: '/admin' },
     { name: '公告管理', path: '/admin/announcements' }
+  ],
+  '/admin/inspection-plans': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '巡检管理', path: '' },
+    { name: '巡检计划', path: '/admin/inspection-plans' }
+  ],
+  '/admin/inspection-records': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '巡检管理', path: '' },
+    { name: '巡检记录', path: '/admin/inspection-records' }
+  ],
+  '/admin/materials': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '物料管理', path: '' },
+    { name: '库存管理', path: '/admin/materials' }
+  ],
+  '/admin/material-stats': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '物料管理', path: '' },
+    { name: '消耗统计', path: '/admin/material-stats' }
   ]
 }
 

@@ -52,6 +52,11 @@ export function initDatabase() {
       completed_at TEXT,
       rating INTEGER,
       rating_comment TEXT,
+      response_deadline TEXT,
+      resolve_deadline TEXT,
+      first_response_at TEXT,
+      resolved_at TEXT,
+      material_cost REAL DEFAULT 0,
       FOREIGN KEY (staff_id) REFERENCES staff(id)
     );
 
@@ -98,11 +103,71 @@ export function initDatabase() {
       FOREIGN KEY (order_id) REFERENCES work_orders(id)
     );
 
+    CREATE TABLE IF NOT EXISTS inspection_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      area TEXT NOT NULL,
+      cycle TEXT NOT NULL,
+      items TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS inspection_records (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL,
+      staff_id TEXT NOT NULL,
+      area TEXT NOT NULL,
+      items_result TEXT NOT NULL,
+      abnormal_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (plan_id) REFERENCES inspection_plans(id),
+      FOREIGN KEY (staff_id) REFERENCES staff(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS materials (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      unit TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      stock_quantity INTEGER NOT NULL DEFAULT 0,
+      safety_threshold INTEGER NOT NULL DEFAULT 10,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS material_usages (
+      id TEXT PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      material_id TEXT NOT NULL,
+      material_name TEXT NOT NULL,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
+      staff_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES work_orders(id),
+      FOREIGN KEY (material_id) REFERENCES materials(id),
+      FOREIGN KEY (staff_id) REFERENCES staff(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_status ON work_orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_staff ON work_orders(staff_id);
     CREATE INDEX IF NOT EXISTS idx_orders_created ON work_orders(created_at);
+    CREATE INDEX IF NOT EXISTS idx_orders_urgency ON work_orders(urgency);
     CREATE INDEX IF NOT EXISTS idx_progress_order ON progress_updates(order_id);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, user_type);
+    CREATE INDEX IF NOT EXISTS idx_inspection_plans_active ON inspection_plans(is_active);
+    CREATE INDEX IF NOT EXISTS idx_inspection_records_plan ON inspection_records(plan_id);
+    CREATE INDEX IF NOT EXISTS idx_inspection_records_staff ON inspection_records(staff_id);
+    CREATE INDEX IF NOT EXISTS idx_inspection_records_date ON inspection_records(created_at);
+    CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category);
+    CREATE INDEX IF NOT EXISTS idx_material_usages_order ON material_usages(order_id);
+    CREATE INDEX IF NOT EXISTS idx_material_usages_material ON material_usages(material_id);
+    CREATE INDEX IF NOT EXISTS idx_material_usages_date ON material_usages(created_at);
   `);
 }
 
@@ -234,6 +299,85 @@ export function seedData() {
   for (const n of notifications) {
     insertNotification.run(...n);
   }
+
+  const insertInspectionPlan = db.prepare(`
+    INSERT INTO inspection_plans (id, name, area, cycle, items, created_by, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const inspectionPlans = [
+    ['ip1', '日常消防巡检', '1-4号楼公共区域', 'daily', '["消防栓","灭火器","烟雾报警器","应急照明","疏散通道"]', 'admin', 1, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['ip2', '电梯周检', '所有楼栋电梯', 'weekly', '["电梯运行声音","按钮功能","门开关","应急电话","平层精度"]', 'admin', 1, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['ip3', '公共照明巡检', '园区公共区域', 'weekly', '["路灯","楼道灯","地下车库灯","景观灯","应急出口灯"]', 'admin', 1, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['ip4', '绿化月度检查', '园区绿化区域', 'monthly', '["乔木生长","灌木修剪","草坪状况","病虫害","灌溉设施"]', 'admin', 1, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z']
+  ];
+
+  for (const p of inspectionPlans) {
+    insertInspectionPlan.run(...p);
+  }
+
+  const insertInspectionRecord = db.prepare(`
+    INSERT INTO inspection_records (id, plan_id, staff_id, area, items_result, abnormal_count, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const inspectionRecords = [
+    ['ir1', 'ip1', 's1', '1-4号楼公共区域', '[{"item":"消防栓","status":"normal"},{"item":"灭火器","status":"normal"},{"item":"烟雾报警器","status":"normal"},{"item":"应急照明","status":"abnormal","remark":"3楼应急灯不亮"},{"item":"疏散通道","status":"normal"}]', 1, '2026-06-06T09:00:00Z'],
+    ['ir2', 'ip1', 's1', '1-4号楼公共区域', '[{"item":"消防栓","status":"normal"},{"item":"灭火器","status":"normal"},{"item":"烟雾报警器","status":"normal"},{"item":"应急照明","status":"normal"},{"item":"疏散通道","status":"normal"}]', 0, '2026-06-07T09:00:00Z'],
+    ['ir3', 'ip1', 's2', '1-4号楼公共区域', '[{"item":"消防栓","status":"normal"},{"item":"灭火器","status":"abnormal","remark":"2号楼灭火器压力不足"},{"item":"烟雾报警器","status":"normal"},{"item":"应急照明","status":"normal"},{"item":"疏散通道","status":"normal"}]', 1, '2026-06-08T09:00:00Z'],
+    ['ir4', 'ip2', 's3', '所有楼栋电梯', '[{"item":"电梯运行声音","status":"normal"},{"item":"按钮功能","status":"normal"},{"item":"门开关","status":"normal"},{"item":"应急电话","status":"normal"},{"item":"平层精度","status":"normal"}]', 0, '2026-06-02T14:00:00Z']
+  ];
+
+  for (const r of inspectionRecords) {
+    insertInspectionRecord.run(...r);
+  }
+
+  const insertMaterial = db.prepare(`
+    INSERT INTO materials (id, name, category, unit, unit_price, stock_quantity, safety_threshold, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const materials = [
+    ['m1', 'PVC水管', '管件', '米', 15.5, 50, 20, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m2', 'PPR热水管', '管件', '米', 28.0, 30, 15, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m3', '弯头90度', '管件', '个', 3.5, 100, 30, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m4', 'LED灯泡', '电料', '个', 12.0, 80, 25, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m5', '插座面板', '电料', '个', 25.0, 40, 15, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m6', '空气开关', '电料', '个', 45.0, 20, 10, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m7', '膨胀螺丝', '五金', '套', 1.5, 200, 50, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m8', '生料带', '五金', '卷', 2.0, 150, 40, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m9', '密封胶', '五金', '支', 18.0, 25, 10, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'],
+    ['m10', '水龙头阀芯', '管件', '个', 35.0, 5, 15, '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z']
+  ];
+
+  for (const m of materials) {
+    insertMaterial.run(...m);
+  }
+
+  const insertMaterialUsage = db.prepare(`
+    INSERT INTO material_usages (id, order_id, material_id, material_name, quantity, unit_price, total_price, staff_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const materialUsages = [
+    ['mu1', 'o1', 'm8', '生料带', 2, 2.0, 4.0, 's1', '2026-05-01T10:00:00Z'],
+    ['mu2', 'o2', 'm5', '插座面板', 1, 25.0, 25.0, 's1', '2026-05-02T11:00:00Z'],
+    ['mu3', 'o4', 'm9', '密封胶', 2, 18.0, 36.0, 's3', '2026-05-05T15:00:00Z'],
+    ['mu4', 'o5', 'm4', 'LED灯泡', 3, 12.0, 36.0, 's1', '2026-05-07T19:30:00Z'],
+    ['mu5', 'o11', 'm2', 'PPR热水管', 2, 28.0, 56.0, 's1', '2026-06-01T11:00:00Z'],
+    ['mu6', 'o11', 'm3', '弯头90度', 4, 3.5, 14.0, 's1', '2026-06-01T11:00:00Z'],
+    ['mu7', 'o11', 'm8', '生料带', 1, 2.0, 2.0, 's1', '2026-06-01T11:00:00Z']
+  ];
+
+  for (const mu of materialUsages) {
+    insertMaterialUsage.run(...mu);
+  }
+
+  db.prepare("UPDATE work_orders SET material_cost = 4.0 WHERE id = 'o1'").run();
+  db.prepare("UPDATE work_orders SET material_cost = 25.0 WHERE id = 'o2'").run();
+  db.prepare("UPDATE work_orders SET material_cost = 36.0 WHERE id = 'o4'").run();
+  db.prepare("UPDATE work_orders SET material_cost = 36.0 WHERE id = 'o5'").run();
+  db.prepare("UPDATE work_orders SET material_cost = 72.0 WHERE id = 'o11'").run();
 }
 
 export function checkTimeout() {

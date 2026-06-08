@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { generateOrderNo, addStatusHistory, addNotification, mapOrderRow, toJsonField, recommendStaff } from '../utils';
-import type { WorkOrder, OrderStatus, RepairType } from '@shared/types';
+import { generateOrderNo, addStatusHistory, addNotification, mapOrderRow, toJsonField, recommendStaff, setOrderSLADeadlines } from '../utils';
+import type { WorkOrder, OrderStatus, RepairType, UrgencyLevel } from '@shared/types';
 
 const router = Router();
 
@@ -61,6 +61,7 @@ router.post('/', (req, res) => {
   `);
   stmt.run(id, orderNo, building, unit, roomNo, repairType, description, urgency, toJsonField(photoUrls), ownerRoom, now, now);
 
+  setOrderSLADeadlines(id, urgency as UrgencyLevel, now);
   addStatusHistory(id, 'pending', '业主提交工单');
 
   const order = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(id) as any;
@@ -84,8 +85,8 @@ router.put('/:id/assign', (req, res) => {
   const now = new Date().toISOString();
   
   db.prepare(`
-    UPDATE work_orders SET staff_id = ?, status = 'assigned', assigned_at = ?, updated_at = ? WHERE id = ?
-  `).run(staffId, now, now, id);
+    UPDATE work_orders SET staff_id = ?, status = 'assigned', assigned_at = ?, first_response_at = COALESCE(first_response_at, ?), updated_at = ? WHERE id = ?
+  `).run(staffId, now, now, now, id);
 
   db.prepare('UPDATE staff SET current_order_count = current_order_count + 1 WHERE id = ?').run(staffId);
 
@@ -110,12 +111,12 @@ router.put('/:id/status', (req, res) => {
   let sql = 'UPDATE work_orders SET status = ?, updated_at = ?';
   
   if (status === 'repairing') {
-    sql += ', assigned_at = COALESCE(assigned_at, ?)';
-    updates.push(now);
+    sql += ', assigned_at = COALESCE(assigned_at, ?), first_response_at = COALESCE(first_response_at, ?)';
+    updates.push(now, now);
   }
   if (status === 'completed' || status === 'checking') {
-    sql += ', completed_at = ?';
-    updates.push(now);
+    sql += ', completed_at = ?, resolved_at = ?';
+    updates.push(now, now);
   }
   
   sql += ' WHERE id = ?';
@@ -154,7 +155,7 @@ router.post('/:id/progress', (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(progressId, id, staffId, content, toJsonField(photoUrls), now);
 
-  db.prepare('UPDATE work_orders SET updated_at = ? WHERE id = ?').run(now, id);
+  db.prepare('UPDATE work_orders SET updated_at = ?, first_response_at = COALESCE(first_response_at, ?) WHERE id = ?').run(now, now, id);
 
   addNotification(orderRow.owner_room, 'owner', 'order_update', '工单进度更新', `您的工单${orderRow.order_no}维修进度已更新`, id);
 
@@ -183,8 +184,8 @@ router.put('/:id/accept', (req, res) => {
   const newStatus: OrderStatus = accepted ? 'completed' : 'rejected';
 
   db.prepare(`
-    UPDATE work_orders SET status = ?, updated_at = ?, completed_at = ? WHERE id = ?
-  `).run(newStatus, now, accepted ? now : orderRow.completed_at, id);
+    UPDATE work_orders SET status = ?, updated_at = ?, completed_at = ?, resolved_at = ? WHERE id = ?
+  `).run(newStatus, now, accepted ? now : orderRow.completed_at, accepted ? now : orderRow.resolved_at, id);
 
   if (accepted && orderRow.staff_id) {
     db.prepare('UPDATE staff SET current_order_count = current_order_count - 1, completed_order_count = completed_order_count + 1 WHERE id = ?').run(orderRow.staff_id);

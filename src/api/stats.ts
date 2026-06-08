@@ -1,8 +1,12 @@
 import request from '@/utils/request'
-import type { DashboardStats } from '@shared/types'
+import type { DashboardStats, SLAStats } from '@shared/types'
 
 export function getDashboardStats(): Promise<DashboardStats> {
   return request.get('/stats/dashboard')
+}
+
+export function getSLAStats(): Promise<SLAStats[]> {
+  return request.get('/stats/sla-stats')
 }
 
 export function getOrdersByType(): Promise<{

@@ -8,6 +8,21 @@ export type SkillTag = 'water_electric' | 'carpentry' | 'tiler' | 'general';
 
 export type UserRole = 'owner' | 'admin' | 'staff';
 
+export type InspectionCycle = 'daily' | 'weekly' | 'monthly';
+
+export type MaterialCategory = '管件' | '电料' | '五金';
+
+export interface SLAInfo {
+  responseDeadline: string;
+  resolveDeadline: string;
+  firstResponseAt?: string;
+  resolvedAt?: string;
+  responseRemaining: number;
+  resolveRemaining: number;
+  responseStatus: 'normal' | 'warning' | 'overdue';
+  resolveStatus: 'normal' | 'warning' | 'overdue';
+}
+
 export interface ProgressUpdate {
   id: string;
   orderId: string;
@@ -46,6 +61,9 @@ export interface WorkOrder {
   rating?: number;
   ratingComment?: string;
   isTimeout: boolean;
+  sla?: SLAInfo;
+  materialCost: number;
+  materialUsages: MaterialUsage[];
   progressUpdates: ProgressUpdate[];
   statusHistory: StatusHistory[];
 }
@@ -84,6 +102,62 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface InspectionPlan {
+  id: string;
+  name: string;
+  area: string;
+  cycle: InspectionCycle;
+  items: string[];
+  createdBy: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InspectionItemResult {
+  item: string;
+  status: 'normal' | 'abnormal';
+  remark?: string;
+}
+
+export interface InspectionRecord {
+  id: string;
+  planId: string;
+  plan?: InspectionPlan;
+  staffId: string;
+  staff?: Staff;
+  area: string;
+  itemsResult: InspectionItemResult[];
+  abnormalCount: number;
+  createdAt: string;
+}
+
+export interface Material {
+  id: string;
+  name: string;
+  category: MaterialCategory;
+  unit: string;
+  unitPrice: number;
+  stockQuantity: number;
+  safetyThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+  lowStock?: boolean;
+}
+
+export interface MaterialUsage {
+  id: string;
+  orderId: string;
+  materialId: string;
+  materialName: string;
+  material: Material;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  staffId: string;
+  createdAt: string;
+}
+
 export interface DashboardStats {
   totalOrders: number;
   pendingOrders: number;
@@ -92,6 +166,27 @@ export interface DashboardStats {
   timeoutCount: number;
   timeoutRate: number;
   avgProcessingTime: number;
+  inspectionCompletionRate: number;
+  abnormalDetectionRate: number;
+  lowStockCount: number;
+  slaResponseRate: Record<UrgencyLevel, number>;
+  slaResolveRate: Record<UrgencyLevel, number>;
+}
+
+export interface SLAStats {
+  urgency: UrgencyLevel;
+  total: number;
+  responseOnTime: number;
+  resolveOnTime: number;
+  responseRate: number;
+  resolveRate: number;
+}
+
+export interface MonthlyMaterialStats {
+  category: MaterialCategory;
+  month: string;
+  quantity: number;
+  amount: number;
 }
 
 export interface LoginRequest {
@@ -163,3 +258,17 @@ export const RepairTypeToSkill: Record<RepairType, SkillTag[]> = {
   elevator: ['water_electric', 'general'],
   other: ['general']
 };
+
+export const InspectionCycleMap: Record<InspectionCycle, string> = {
+  daily: '每日',
+  weekly: '每周',
+  monthly: '每月'
+};
+
+export const SLATimeLimits: Record<UrgencyLevel, { response: number; resolve: number }> = {
+  normal: { response: 24, resolve: 72 },
+  urgent: { response: 4, resolve: 24 },
+  very_urgent: { response: 1, resolve: 4 }
+};
+
+export const MaterialCategoryList: MaterialCategory[] = ['管件', '电料', '五金'];

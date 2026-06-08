@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { db } from '../db';
-import { isOrderTimeout } from '../utils';
+import { isOrderTimeout, calculateSLA } from '../utils';
 import dayjs from 'dayjs';
-import type { RepairType, OrderStatus } from '@shared/types';
-import { RepairTypeMap } from '@shared/types';
+import type { RepairType, OrderStatus, UrgencyLevel } from '@shared/types';
+import { RepairTypeMap, SLATimeLimits } from '@shared/types';
 
 const router = Router();
 
@@ -30,6 +30,84 @@ router.get('/dashboard', (req, res) => {
     avgTime = Math.round((totalHours / completedWithTime.length) * 10) / 10;
   }
 
+  const inspectionPlans = db.prepare(`SELECT * FROM inspection_plans WHERE is_active = 1`).all() as any[];
+  let expectedCount = 0;
+  const now = new Date();
+  
+  for (const plan of inspectionPlans) {
+    const start = new Date(plan.created_at);
+    const end = now;
+    const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (plan.cycle === 'daily') {
+      expectedCount += Math.max(0, Math.floor(days));
+    } else if (plan.cycle === 'weekly') {
+      expectedCount += Math.max(0, Math.floor(days / 7));
+    } else if (plan.cycle === 'monthly') {
+      expectedCount += Math.max(0, Math.floor(days / 30));
+    }
+  }
+
+  const actualCountRow = db.prepare(`SELECT COUNT(*) as count FROM inspection_records`).get() as { count: number };
+  const actualCount = actualCountRow.count;
+  const inspectionCompletionRate = expectedCount > 0 ? Math.round((actualCount / expectedCount) * 100) / 100 : 1;
+
+  const abnormalStats = db.prepare(`
+    SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN abnormal_count > 0 THEN 1 ELSE 0 END) as abnormal_records
+    FROM inspection_records
+  `).get() as { total: number; abnormal_records: number };
+  
+  const abnormalDetectionRate = abnormalStats.total > 0 ? Math.round((abnormalStats.abnormal_records / abnormalStats.total) * 100) / 100 : 0;
+
+  const lowStockCountRow = db.prepare(`
+    SELECT COUNT(*) as count FROM materials WHERE stock_quantity <= safety_threshold
+  `).get() as { count: number };
+  const lowStockCount = lowStockCountRow.count;
+
+  const slaOrders = db.prepare(`
+    SELECT id, urgency, created_at, first_response_at, resolved_at, assigned_at, status
+    FROM work_orders
+  `).all() as any[];
+
+  const slaResponseRate: Record<UrgencyLevel, number> = { normal: 0, urgent: 0, very_urgent: 0 };
+  const slaResolveRate: Record<UrgencyLevel, number> = { normal: 0, urgent: 0, very_urgent: 0 };
+
+  const slaStatsByUrgency: Record<UrgencyLevel, { total: number; responseOnTime: number; resolveOnTime: number }> = {
+    normal: { total: 0, responseOnTime: 0, resolveOnTime: 0 },
+    urgent: { total: 0, responseOnTime: 0, resolveOnTime: 0 },
+    very_urgent: { total: 0, responseOnTime: 0, resolveOnTime: 0 }
+  };
+
+  for (const order of slaOrders) {
+    const urgency = order.urgency as UrgencyLevel;
+    const sla = calculateSLA(
+      order.created_at,
+      urgency,
+      order.first_response_at,
+      order.resolved_at,
+      order.assigned_at
+    );
+    
+    slaStatsByUrgency[urgency].total++;
+    
+    const hasResponded = order.first_response_at || order.assigned_at;
+    if (hasResponded && sla.responseStatus !== 'overdue') {
+      slaStatsByUrgency[urgency].responseOnTime++;
+    }
+    
+    if (order.status === 'completed' && sla.resolveStatus !== 'overdue') {
+      slaStatsByUrgency[urgency].resolveOnTime++;
+    }
+  }
+
+  for (const urgency of ['normal', 'urgent', 'very_urgent'] as UrgencyLevel[]) {
+    const stats = slaStatsByUrgency[urgency];
+    slaResponseRate[urgency] = stats.total > 0 ? Math.round((stats.responseOnTime / stats.total) * 100) / 100 : 1;
+    slaResolveRate[urgency] = stats.total > 0 ? Math.round((stats.resolveOnTime / stats.total) * 100) / 100 : 1;
+  }
+
   res.json({
     totalOrders: total.count,
     pendingOrders: pending.count,
@@ -37,8 +115,62 @@ router.get('/dashboard', (req, res) => {
     completedOrders: completed.count,
     timeoutCount,
     timeoutRate,
-    avgProcessingTime: avgTime
+    avgProcessingTime: avgTime,
+    inspectionCompletionRate,
+    abnormalDetectionRate,
+    lowStockCount,
+    slaResponseRate,
+    slaResolveRate
   });
+});
+
+router.get('/sla-stats', (req, res) => {
+  const slaOrders = db.prepare(`
+    SELECT id, urgency, created_at, first_response_at, resolved_at, assigned_at, status
+    FROM work_orders
+  `).all() as any[];
+
+  const slaStatsByUrgency: Record<UrgencyLevel, { total: number; responseOnTime: number; resolveOnTime: number }> = {
+    normal: { total: 0, responseOnTime: 0, resolveOnTime: 0 },
+    urgent: { total: 0, responseOnTime: 0, resolveOnTime: 0 },
+    very_urgent: { total: 0, responseOnTime: 0, resolveOnTime: 0 }
+  };
+
+  for (const order of slaOrders) {
+    const urgency = order.urgency as UrgencyLevel;
+    const sla = calculateSLA(
+      order.created_at,
+      urgency,
+      order.first_response_at,
+      order.resolved_at,
+      order.assigned_at
+    );
+    
+    slaStatsByUrgency[urgency].total++;
+    
+    const hasResponded = order.first_response_at || order.assigned_at;
+    if (hasResponded && sla.responseStatus !== 'overdue') {
+      slaStatsByUrgency[urgency].responseOnTime++;
+    }
+    
+    if (order.status === 'completed' && sla.resolveStatus !== 'overdue') {
+      slaStatsByUrgency[urgency].resolveOnTime++;
+    }
+  }
+
+  const result = (['normal', 'urgent', 'very_urgent'] as UrgencyLevel[]).map(urgency => {
+    const stats = slaStatsByUrgency[urgency];
+    return {
+      urgency,
+      total: stats.total,
+      responseOnTime: stats.responseOnTime,
+      resolveOnTime: stats.resolveOnTime,
+      responseRate: stats.total > 0 ? Math.round((stats.responseOnTime / stats.total) * 100) / 100 : 1,
+      resolveRate: stats.total > 0 ? Math.round((stats.resolveOnTime / stats.total) * 100) / 100 : 1
+    };
+  });
+
+  res.json(result);
 });
 
 router.get('/orders-by-type', (req, res) => {

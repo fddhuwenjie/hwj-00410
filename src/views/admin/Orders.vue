@@ -86,6 +86,25 @@
             <span v-else class="text-gray-400">-</span>
           </template>
         </el-table-column>
+        <el-table-column label="SLA" width="180">
+          <template #default="{ row }">
+            <div v-if="row.sla" class="text-sm space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 text-xs">响应:</span>
+                <span :class="getSLAStatusClass(row.sla.responseStatus)">
+                  {{ formatSLATime(row.sla.responseRemaining) }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-gray-500 text-xs">解决:</span>
+                <span :class="getSLAStatusClass(row.sla.resolveStatus)">
+                  {{ formatSLATime(row.sla.resolveRemaining) }}
+                </span>
+              </div>
+            </div>
+            <span v-else class="text-gray-400">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -188,7 +207,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getOrders, assignOrder, getRecommendedStaff } from '@/api/orders'
-import { formatDate, formatStatus, formatUrgency, formatRepairType, formatSkillTag } from '@/utils/format'
+import { formatDate, formatStatus, formatUrgency, formatRepairType, formatSkillTag, formatSLATime, getSLAStatusClass, isSLAWarning, isSLAOverdue } from '@/utils/format'
 import type { WorkOrder, RepairType, OrderStatus, UrgencyLevel } from '@shared/types'
 import { Search, UserFilled, View } from '@element-plus/icons-vue'
 
@@ -213,7 +232,13 @@ const recommendedStaff = ref<any[]>([])
 const selectedStaffId = ref('')
 
 function rowClassName({ row }: { row: WorkOrder }) {
-  return row.isTimeout ? 'timeout-row' : ''
+  if (isSLAOverdue(row.sla) || row.isTimeout) {
+    return 'overdue-row'
+  }
+  if (isSLAWarning(row.sla)) {
+    return 'warning-row'
+  }
+  return ''
 }
 
 function getStatusTagType(status: OrderStatus) {
@@ -311,10 +336,16 @@ onMounted(() => {
 </script>
 
 <style>
-.timeout-row {
+.overdue-row {
   background-color: #fef0f0 !important;
 }
-.timeout-row:hover > td {
+.overdue-row:hover > td {
   background-color: #fde2e2 !important;
+}
+.warning-row {
+  background-color: #fffbeb !important;
+}
+.warning-row:hover > td {
+  background-color: #fef3c7 !important;
 }
 </style>

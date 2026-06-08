@@ -72,6 +72,26 @@ const router = createRouter({
           path: 'announcements',
           name: 'AdminAnnouncements',
           component: () => import('@/views/admin/Announcements.vue')
+        },
+        {
+          path: 'inspection-plans',
+          name: 'AdminInspectionPlans',
+          component: () => import('@/views/admin/InspectionPlans.vue')
+        },
+        {
+          path: 'inspection-records',
+          name: 'AdminInspectionRecords',
+          component: () => import('@/views/admin/InspectionRecords.vue')
+        },
+        {
+          path: 'materials',
+          name: 'AdminMaterials',
+          component: () => import('@/views/admin/Materials.vue')
+        },
+        {
+          path: 'material-stats',
+          name: 'AdminMaterialStats',
+          component: () => import('@/views/admin/MaterialStats.vue')
         }
       ]
     },
@@ -90,6 +110,11 @@ const router = createRouter({
           path: 'orders/:id',
           name: 'StaffOrderDetail',
           component: () => import('@/views/staff/OrderDetail.vue')
+        },
+        {
+          path: 'inspections',
+          name: 'StaffInspections',
+          component: () => import('@/views/staff/Inspections.vue')
         }
       ]
     }

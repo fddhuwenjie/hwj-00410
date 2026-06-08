@@ -34,6 +34,10 @@
               <el-icon><CircleCheck /></el-icon>
               <span>已完成</span>
             </el-menu-item>
+            <el-menu-item index="/staff/inspections">
+              <el-icon><DataBoard /></el-icon>
+              <span>巡检任务</span>
+            </el-menu-item>
           </el-menu>
           <el-dropdown @command="handleCommand">
             <div class="flex items-center space-x-2 cursor-pointer hover:bg-primary-700 px-3 py-2 rounded-lg transition-colors">
@@ -154,6 +158,10 @@ const processingCount = ref(0)
 const completedCount = ref(0)
 
 const activeMenu = computed(() => {
+  const path = route.path
+  if (path === '/staff/inspections') {
+    return '/staff/inspections'
+  }
   const status = route.query.status
   if (status === 'processing') return '/staff?status=processing'
   if (status === 'completed') return '/staff?status=completed'

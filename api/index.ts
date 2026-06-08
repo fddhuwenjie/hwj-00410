@@ -18,6 +18,8 @@ import announcementRoutes from './routes/announcements';
 import statsRoutes from './routes/stats';
 import notificationRoutes from './routes/notifications';
 import buildingRoutes from './routes/buildings';
+import inspectionRoutes from './routes/inspections';
+import materialRoutes from './routes/materials';
 
 setInterval(() => {
   checkTimeout();
@@ -36,6 +38,8 @@ app.use('/api/announcements', announcementRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/buildings', buildingRoutes);
+app.use('/api/inspections', inspectionRoutes);
+app.use('/api/materials', materialRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

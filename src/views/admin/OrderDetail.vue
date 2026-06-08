@@ -23,6 +23,42 @@
             </div>
           </div>
 
+          <div v-if="order?.sla" class="mb-6 p-4 rounded-lg" :class="getSLABackgroundClass(order.sla)">
+            <h4 class="text-sm font-medium text-gray-700 mb-3">SLA时效</h4>
+            <div class="grid grid-cols-2 gap-4">
+              <div class="p-3 bg-white rounded-lg">
+                <div class="text-xs text-gray-500 mb-1">响应截止时间</div>
+                <div class="font-medium text-sm mb-2">
+                  {{ formatDate(order.sla.responseDeadline, 'MM-DD HH:mm') }}
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500">剩余时间</span>
+                  <span
+                    class="font-bold"
+                    :class="getSLAStatusClass(order.sla.responseStatus)"
+                  >
+                    {{ formatSLATime(order.sla.responseRemaining) }}
+                  </span>
+                </div>
+              </div>
+              <div class="p-3 bg-white rounded-lg">
+                <div class="text-xs text-gray-500 mb-1">解决截止时间</div>
+                <div class="font-medium text-sm mb-2">
+                  {{ formatDate(order.sla.resolveDeadline, 'MM-DD HH:mm') }}
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-gray-500">剩余时间</span>
+                  <span
+                    class="font-bold"
+                    :class="getSLAStatusClass(order.sla.resolveStatus)"
+                  >
+                    {{ formatSLATime(order.sla.resolveRemaining) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 gap-4 mb-6">
             <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
               <el-icon :size="20" color="#6b7280"><Location /></el-icon>
@@ -84,6 +120,31 @@
                 <span class="text-sm text-gray-500">{{ order.rating }} 分</span>
               </div>
               <p class="text-gray-600">{{ order.ratingComment }}</p>
+            </div>
+          </div>
+
+          <div v-if="order?.materialCost && order.materialCost > 0" class="mb-6">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">物料费用</h4>
+            <div class="bg-gray-50 p-4 rounded-lg">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-gray-600">物料总费用</span>
+                <span class="text-xl font-bold text-red-600">¥{{ order.materialCost.toFixed(2) }}</span>
+              </div>
+              <el-table v-if="order.materialUsages && order.materialUsages.length > 0" :data="order.materialUsages" size="small">
+                <el-table-column prop="material.name" label="物料名称" />
+                <el-table-column prop="material.unit" label="单位" width="60" />
+                <el-table-column prop="quantity" label="数量" width="80" align="center" />
+                <el-table-column label="单价" width="100" align="center">
+                  <template #default="{ row }">
+                    ¥{{ row.unitPrice.toFixed(2) }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="小计" width="100" align="center">
+                  <template #default="{ row }">
+                    ¥{{ (row.quantity * row.unitPrice).toFixed(2) }}
+                  </template>
+                </el-table-column>
+              </el-table>
             </div>
           </div>
         </div>
@@ -201,8 +262,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getOrder } from '@/api/orders'
-import { formatDate, formatStatus, formatUrgency, formatRepairType, formatSkillTag } from '@/utils/format'
-import type { WorkOrder, OrderStatus, UrgencyLevel } from '@shared/types'
+import { formatDate, formatStatus, formatUrgency, formatRepairType, formatSkillTag, formatSLATime, getSLAStatusClass, isSLAWarning, isSLAOverdue } from '@/utils/format'
+import type { WorkOrder, OrderStatus, UrgencyLevel, SLAInfo } from '@shared/types'
 import { ArrowLeft, Location, Tools, Warning, UserFilled, Setting } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -251,6 +312,16 @@ function getStatusTimelineType(status?: OrderStatus) {
     rejected: 'danger'
   }
   return typeMap[status] || ''
+}
+
+function getSLABackgroundClass(sla: SLAInfo): string {
+  if (isSLAOverdue(sla)) {
+    return 'bg-red-50'
+  }
+  if (isSLAWarning(sla)) {
+    return 'bg-yellow-50'
+  }
+  return 'bg-green-50'
 }
 
 function goBack() {

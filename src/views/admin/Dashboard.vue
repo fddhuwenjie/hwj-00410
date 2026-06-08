@@ -71,6 +71,94 @@
       </div>
     </div>
 
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+      <div class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-500">巡检完成率</p>
+            <p class="text-2xl font-bold text-cyan-600 mt-1">{{ (stats.inspectionCompletionRate * 100).toFixed(1) }}%</p>
+          </div>
+          <div class="w-12 h-12 bg-cyan-100 rounded-lg flex items-center justify-center">
+            <el-icon :size="24" color="#0891b2"><DataBoard /></el-icon>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-500">异常发现率</p>
+            <p class="text-2xl font-bold text-orange-600 mt-1">{{ (stats.abnormalDetectionRate * 100).toFixed(1) }}%</p>
+          </div>
+          <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+            <el-icon :size="24" color="#ea580c"><WarningFilled /></el-icon>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-500">SLA响应达标率</p>
+            <p class="text-2xl font-bold text-emerald-600 mt-1">{{ getOverallResponseRate() }}%</p>
+          </div>
+          <div class="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+            <el-icon :size="24" color="#059669"><Watch /></el-icon>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-500">SLA解决达标率</p>
+            <p class="text-2xl font-bold text-teal-600 mt-1">{{ getOverallResolveRate() }}%</p>
+          </div>
+          <div class="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
+            <el-icon :size="24" color="#0d9488"><Check /></el-icon>
+          </div>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm text-gray-500">低库存物料</p>
+            <p class="text-2xl font-bold text-rose-600 mt-1">{{ stats.lowStockCount }}</p>
+          </div>
+          <div class="w-12 h-12 bg-rose-100 rounded-lg flex items-center justify-center">
+            <el-icon :size="24" color="#e11d48"><Goods /></el-icon>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">SLA达标率统计（按紧急程度）</h3>
+        <div ref="slaChartRef" class="h-72"></div>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm p-5">
+        <h3 class="text-lg font-semibold text-gray-800 mb-4">低库存预警</h3>
+        <div v-if="lowStockMaterials.length > 0" class="space-y-3 max-h-72 overflow-y-auto">
+          <div
+            v-for="item in lowStockMaterials"
+            :key="item.id"
+            class="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
+          >
+            <div>
+              <div class="font-medium text-gray-800">{{ item.name }}</div>
+              <div class="text-xs text-gray-500">{{ item.category }}</div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm">
+                <span class="text-red-600 font-bold">{{ item.stockQuantity }}</span>
+                <span class="text-gray-500"> / {{ item.safetyThreshold }}</span>
+              </div>
+              <div class="text-xs text-gray-500">库存 / 安全阈值</div>
+            </div>
+          </div>
+        </div>
+        <el-empty v-else description="暂无库存不足物料" :image-size="60" />
+      </div>
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
       <div class="bg-white rounded-xl shadow-sm p-5">
         <h3 class="text-lg font-semibold text-gray-800 mb-4">工单类型分布</h3>
@@ -159,19 +247,23 @@ import {
   getAvgDuration,
   getStaffRanking,
   getMonthlyTrend,
-  getTimeoutRate
+  getTimeoutRate,
+  getSLAStats
 } from '@/api/stats'
+import { getLowStockMaterials } from '@/api/materials'
 import { formatDuration } from '@/utils/format'
-import type { DashboardStats } from '@shared/types'
-import { Document, Clock, Setting, CircleCheck, Warning, Timer } from '@element-plus/icons-vue'
+import type { DashboardStats, Material, SLAStats } from '@shared/types'
+import { Document, Clock, Setting, CircleCheck, Warning, Timer, DataBoard, WarningFilled, Watch, Check, Goods } from '@element-plus/icons-vue'
 
 const pieChartRef = ref<HTMLElement>()
 const barChartRef = ref<HTMLElement>()
 const lineChartRef = ref<HTMLElement>()
+const slaChartRef = ref<HTMLElement>()
 
 let pieChart: echarts.ECharts | null = null
 let barChart: echarts.ECharts | null = null
 let lineChart: echarts.ECharts | null = null
+let slaChart: echarts.ECharts | null = null
 
 const stats = ref<DashboardStats>({
   totalOrders: 0,
@@ -180,7 +272,12 @@ const stats = ref<DashboardStats>({
   completedOrders: 0,
   timeoutCount: 0,
   timeoutRate: 0,
-  avgProcessingTime: 0
+  avgProcessingTime: 0,
+  inspectionCompletionRate: 0,
+  abnormalDetectionRate: 0,
+  lowStockCount: 0,
+  slaResponseRate: { normal: 0, urgent: 0, very_urgent: 0 },
+  slaResolveRate: { normal: 0, urgent: 0, very_urgent: 0 }
 })
 
 const ordersByType = ref<{ type: string; name: string; value: number }[]>([])
@@ -188,6 +285,22 @@ const avgDuration = ref<{ type: string; name: string; avgHours: number }[]>([])
 const staffRanking = ref<{ rank: number; id: string; name: string; avgRating: number; completedCount: number }[]>([])
 const monthlyTrend = ref<{ month: string; count: number }[]>([])
 const timeoutRateList = ref<{ type: string; name: string; total: number; timeout: number; rate: number }[]>([])
+const slaStats = ref<SLAStats[]>([])
+const lowStockMaterials = ref<Material[]>([])
+
+function getOverallResponseRate(): string {
+  const rates = Object.values(stats.value.slaResponseRate).filter(v => v > 0)
+  if (rates.length === 0) return '0.0'
+  const avg = rates.reduce((a, b) => a + b, 0) / rates.length
+  return (avg * 100).toFixed(1)
+}
+
+function getOverallResolveRate(): string {
+  const rates = Object.values(stats.value.slaResolveRate).filter(v => v > 0)
+  if (rates.length === 0) return '0.0'
+  const avg = rates.reduce((a, b) => a + b, 0) / rates.length
+  return (avg * 100).toFixed(1)
+}
 
 async function loadData() {
   const [
@@ -196,14 +309,18 @@ async function loadData() {
     avgDurationData,
     staffRankingData,
     monthlyTrendData,
-    timeoutRateData
+    timeoutRateData,
+    slaStatsData,
+    lowStockData
   ] = await Promise.all([
     getDashboardStats(),
     getOrdersByType(),
     getAvgDuration(),
     getStaffRanking(),
     getMonthlyTrend(),
-    getTimeoutRate()
+    getTimeoutRate(),
+    getSLAStats(),
+    getLowStockMaterials()
   ])
 
   stats.value = statsData
@@ -212,6 +329,8 @@ async function loadData() {
   staffRanking.value = staffRankingData
   monthlyTrend.value = monthlyTrendData
   timeoutRateList.value = timeoutRateData
+  slaStats.value = slaStatsData
+  lowStockMaterials.value = lowStockData.materials
 }
 
 function initPieChart() {
@@ -350,10 +469,81 @@ function initLineChart() {
   lineChart.setOption(option)
 }
 
+function initSLAChart() {
+  if (!slaChartRef.value) return
+
+  const urgencyMap: Record<string, string> = {
+    normal: '一般',
+    urgent: '紧急',
+    very_urgent: '非常紧急'
+  }
+  const urgencyNames = slaStats.value.map((item: SLAStats) => urgencyMap[item.urgency] || item.urgency)
+
+  slaChart = echarts.init(slaChartRef.value)
+  const option: echarts.EChartsOption = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      },
+      formatter: (params: any) => {
+        let result = `${params[0].axisValue}<br/>`
+        params.forEach((p: any) => {
+          const val = p.value * 100
+          result += `${p.marker} ${p.seriesName}: ${val.toFixed(1)}%<br/>`
+        })
+        return result
+      }
+    },
+    legend: {
+      data: ['响应达标率', '解决达标率'],
+      bottom: 0
+    },
+    xAxis: {
+      type: 'category',
+      data: urgencyNames
+    },
+    yAxis: {
+      type: 'value',
+      name: '达标率',
+      min: 0,
+      max: 1,
+      axisLabel: {
+        formatter: (value: number) => (value * 100).toFixed(0) + '%'
+      }
+    },
+    series: [
+      {
+        name: '响应达标率',
+        type: 'bar',
+        data: slaStats.value.map((item: SLAStats) => item.responseRate),
+        itemStyle: {
+          color: '#10b981',
+          borderRadius: [4, 4, 0, 0]
+        }
+      },
+      {
+        name: '解决达标率',
+        type: 'bar',
+        data: slaStats.value.map((item: SLAStats) => item.resolveRate),
+        itemStyle: {
+          color: '#3b82f6',
+          borderRadius: [4, 4, 0, 0]
+        }
+      }
+    ],
+    grid: {
+      bottom: 60
+    }
+  }
+  slaChart.setOption(option)
+}
+
 function handleResize() {
   pieChart?.resize()
   barChart?.resize()
   lineChart?.resize()
+  slaChart?.resize()
 }
 
 onMounted(async () => {
@@ -362,6 +552,7 @@ onMounted(async () => {
   initPieChart()
   initBarChart()
   initLineChart()
+  initSLAChart()
   window.addEventListener('resize', handleResize)
 })
 
@@ -370,6 +561,7 @@ onBeforeUnmount(() => {
   pieChart?.dispose()
   barChart?.dispose()
   lineChart?.dispose()
+  slaChart?.dispose()
 })
 </script>
 

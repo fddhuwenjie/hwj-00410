@@ -9,7 +9,7 @@
 
     <div v-loading="loading">
       <div v-if="order" class="space-y-4">
-        <div class="bg-white rounded-xl p-4 shadow-sm" :class="{ 'timeout-border': order.isTimeout }">
+        <div class="bg-white rounded-xl p-4 shadow-sm" :class="getOrderBorderClass(order)">
           <div class="flex items-start justify-between mb-4">
             <div>
               <div class="flex items-center gap-2 mb-1">
@@ -25,6 +25,24 @@
             <el-tag :type="getUrgencyTagType(order.urgency)" size="small">
               {{ formatUrgency(order.urgency) }}
             </el-tag>
+          </div>
+
+          <div v-if="order.sla" class="mb-4 p-3 rounded-lg" :class="getSLABackgroundClass(order.sla)">
+            <div class="text-xs font-medium text-gray-600 mb-2">SLA时效</div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <div class="text-xs text-gray-500">响应剩余</div>
+                <div class="text-sm font-bold" :class="getSLAStatusClass(order.sla.responseStatus)">
+                  {{ formatSLATime(order.sla.responseRemaining) }}
+                </div>
+              </div>
+              <div>
+                <div class="text-xs text-gray-500">解决剩余</div>
+                <div class="text-sm font-bold" :class="getSLAStatusClass(order.sla.resolveStatus)">
+                  {{ formatSLATime(order.sla.resolveRemaining) }}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="grid grid-cols-2 gap-4 py-3 border-t border-gray-100">
@@ -62,6 +80,43 @@
                 @click="previewImage(url)"
               />
             </div>
+          </div>
+
+          <div v-if="(order.materialCost && order.materialCost > 0) || order.status === 'repairing'" class="pt-3 border-t border-gray-100">
+            <div class="flex items-center justify-between mb-2">
+              <span class="info-label">物料费用</span>
+              <el-button
+                v-if="order.status === 'repairing'"
+                size="small"
+                type="primary"
+                @click="showMaterialDialog = true"
+              >
+                <el-icon><Plus /></el-icon>
+                领用物料
+              </el-button>
+            </div>
+            <div v-if="order.materialUsages && order.materialUsages.length > 0">
+              <div class="space-y-2">
+                <div
+                  v-for="usage in order.materialUsages"
+                  :key="usage.id"
+                  class="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
+                >
+                  <div>
+                    <span class="font-medium text-sm">{{ usage.material.name }}</span>
+                    <span class="text-xs text-gray-500 ml-2">×{{ usage.quantity }}{{ usage.material.unit }}</span>
+                  </div>
+                  <span class="text-sm font-medium text-red-600">
+                    ¥{{ (usage.quantity * usage.unitPrice).toFixed(2) }}
+                  </span>
+                </div>
+              </div>
+              <div class="flex items-center justify-between mt-3 pt-2 border-t">
+                <span class="font-medium">合计</span>
+                <span class="text-lg font-bold text-red-600">¥{{ order.materialCost.toFixed(2) }}</span>
+              </div>
+            </div>
+            <el-empty v-else description="暂无物料领用记录" :image-size="60" />
           </div>
         </div>
 
@@ -187,6 +242,47 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="showMaterialDialog" title="领用物料" width="90%" max-width="500px" :close-on-click-modal="false">
+      <el-form label-position="top">
+        <el-form-item label="选择物料" required>
+          <el-select v-model="selectedMaterialId" placeholder="请选择物料" style="width: 100%" @change="handleMaterialChange">
+            <el-option
+              v-for="m in availableMaterials"
+              :key="m.id"
+              :label="`${m.name} (库存: ${m.stockQuantity}${m.unit})`"
+              :value="m.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="单价" required>
+          <el-input-number
+            v-model="materialForm.unitPrice"
+            :min="0"
+            :precision="2"
+            :step="0.5"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="领用数量" required>
+          <el-input-number
+            v-model="materialForm.quantity"
+            :min="1"
+            :max="maxQuantity"
+            style="width: 100%"
+          />
+          <div v-if="selectedMaterial" class="text-xs text-gray-500 mt-1">
+            当前库存：{{ selectedMaterial.stockQuantity }}{{ selectedMaterial.unit }}，安全库存：{{ selectedMaterial.safetyThreshold }}{{ selectedMaterial.unit }}
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showMaterialDialog = false">取消</el-button>
+        <el-button type="primary" :loading="materialSubmitting" @click="handleMaterialUsage">
+          确认领用
+        </el-button>
+      </template>
+    </el-dialog>
+
     <el-image-viewer
       v-if="showViewer"
       :url-list="[currentPreviewUrl]"
@@ -197,7 +293,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElImageViewer } from 'element-plus'
 import {
@@ -205,12 +301,14 @@ import {
   List,
   VideoPlay,
   Edit,
-  CircleCheck
+  CircleCheck,
+  Plus
 } from '@element-plus/icons-vue'
 import { getOrder, updateOrderStatus, addProgress } from '@/api/orders'
+import { getMaterials, createMaterialUsage } from '@/api/materials'
 import { useUserStore } from '@/stores/user'
-import { formatDate, formatStatus, formatUrgency, formatRepairType } from '@/utils/format'
-import type { WorkOrder, OrderStatus, UrgencyLevel } from '@shared/types'
+import { formatDate, formatStatus, formatUrgency, formatRepairType, formatSLATime, getSLAStatusClass, isSLAWarning, isSLAOverdue } from '@/utils/format'
+import type { WorkOrder, OrderStatus, UrgencyLevel, Material, SLAInfo } from '@shared/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -220,12 +318,29 @@ const loading = ref(false)
 const actionLoading = ref(false)
 const order = ref<WorkOrder | null>(null)
 const showProgressDialog = ref(false)
+const showMaterialDialog = ref(false)
 const showViewer = ref(false)
 const currentPreviewUrl = ref('')
+const availableMaterials = ref<Material[]>([])
+const selectedMaterialId = ref('')
+const materialSubmitting = ref(false)
 
 const progressForm = reactive({
   content: '',
   photoUrls: ''
+})
+
+const materialForm = reactive({
+  unitPrice: 0,
+  quantity: 1
+})
+
+const selectedMaterial = computed(() => {
+  return availableMaterials.value.find(m => m.id === selectedMaterialId.value)
+})
+
+const maxQuantity = computed(() => {
+  return selectedMaterial.value?.stockQuantity || 1
 })
 
 function getStatusTagType(status: OrderStatus) {
@@ -259,6 +374,70 @@ function getStatusTimelineType(status: OrderStatus) {
     rejected: 'danger'
   }
   return map[status]
+}
+
+function getOrderBorderClass(order: WorkOrder): string {
+  if (isSLAOverdue(order.sla) || order.isTimeout) {
+    return 'timeout-border'
+  }
+  if (isSLAWarning(order.sla)) {
+    return 'warning-border'
+  }
+  return ''
+}
+
+function getSLABackgroundClass(sla?: SLAInfo): string {
+  if (!sla) return ''
+  if (isSLAOverdue(sla)) {
+    return 'bg-red-50'
+  }
+  if (isSLAWarning(sla)) {
+    return 'bg-yellow-50'
+  }
+  return 'bg-green-50'
+}
+
+function handleMaterialChange(materialId: string) {
+  const material = availableMaterials.value.find(m => m.id === materialId)
+  if (material) {
+    materialForm.unitPrice = material.unitPrice
+    materialForm.quantity = 1
+  }
+}
+
+async function loadMaterials() {
+  const res = await getMaterials({ pageSize: 100 })
+  availableMaterials.value = res.data
+}
+
+async function handleMaterialUsage() {
+  if (!order.value || !userStore.user?.id || !selectedMaterialId.value) {
+    ElMessage.warning('请选择物料')
+    return
+  }
+  if (materialForm.quantity <= 0) {
+    ElMessage.warning('请输入有效的领用数量')
+    return
+  }
+
+  materialSubmitting.value = true
+  try {
+    await createMaterialUsage({
+      orderId: order.value!.id,
+      materialId: selectedMaterialId.value,
+      staffId: userStore.user!.id,
+      quantity: materialForm.quantity,
+      unitPrice: materialForm.unitPrice
+    })
+    ElMessage.success('物料领用成功')
+    showMaterialDialog.value = false
+    selectedMaterialId.value = ''
+    materialForm.unitPrice = 0
+    materialForm.quantity = 1
+    await fetchOrderDetail()
+  } finally {
+    materialSubmitting.value = false
+  }
 }
 
 function previewImage(url: string) {
@@ -331,13 +510,20 @@ async function handleCompleteRepair() {
   }
 }
 
-onMounted(fetchOrderDetail)
+onMounted(async () => {
+  await Promise.all([fetchOrderDetail(), loadMaterials()])
+})
 </script>
 
 <style scoped>
 .timeout-border {
   border: 1px solid #fecaca;
   background: linear-gradient(to right, #fef2f2, #ffffff);
+}
+
+.warning-border {
+  border: 1px solid #fcd34d;
+  background: linear-gradient(to right, #fffbeb, #ffffff);
 }
 
 .info-item {
