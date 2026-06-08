@@ -154,6 +154,68 @@ export function initDatabase() {
       FOREIGN KEY (staff_id) REFERENCES staff(id)
     );
 
+    CREATE TABLE IF NOT EXISTS bills (
+      id TEXT PRIMARY KEY,
+      order_id TEXT UNIQUE NOT NULL,
+      order_no TEXT NOT NULL,
+      owner_room TEXT NOT NULL,
+      building TEXT NOT NULL,
+      labor_cost REAL NOT NULL DEFAULT 0,
+      material_cost REAL NOT NULL DEFAULT 0,
+      visit_fee REAL NOT NULL DEFAULT 15,
+      total_amount REAL NOT NULL DEFAULT 0,
+      labor_detail TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unpaid',
+      paid_at TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES work_orders(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS return_visits (
+      id TEXT PRIMARY KEY,
+      order_id TEXT UNIQUE NOT NULL,
+      order_no TEXT NOT NULL,
+      owner_room TEXT NOT NULL,
+      staff_id TEXT NOT NULL,
+      staff_name TEXT NOT NULL,
+      quality_score INTEGER DEFAULT 0,
+      attitude_score INTEGER DEFAULT 0,
+      speed_score INTEGER DEFAULT 0,
+      has_remaining_issue INTEGER DEFAULT 0,
+      remaining_issue_desc TEXT,
+      suggestion TEXT,
+      scheduled_at TEXT NOT NULL,
+      completed_at TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES work_orders(id),
+      FOREIGN KEY (staff_id) REFERENCES staff(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS knowledge_articles (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL,
+      content TEXT NOT NULL,
+      keywords TEXT NOT NULL,
+      view_count INTEGER DEFAULT 0,
+      helpful_count INTEGER DEFAULT 0,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS self_service_records (
+      id TEXT PRIMARY KEY,
+      owner_room TEXT NOT NULL,
+      query_text TEXT NOT NULL,
+      matched_article_id TEXT,
+      matched_article_title TEXT,
+      is_resolved INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (matched_article_id) REFERENCES knowledge_articles(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_status ON work_orders(status);
     CREATE INDEX IF NOT EXISTS idx_orders_staff ON work_orders(staff_id);
     CREATE INDEX IF NOT EXISTS idx_orders_created ON work_orders(created_at);
@@ -168,7 +230,28 @@ export function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_material_usages_order ON material_usages(order_id);
     CREATE INDEX IF NOT EXISTS idx_material_usages_material ON material_usages(material_id);
     CREATE INDEX IF NOT EXISTS idx_material_usages_date ON material_usages(created_at);
+    CREATE INDEX IF NOT EXISTS idx_bills_owner ON bills(owner_room);
+    CREATE INDEX IF NOT EXISTS idx_bills_status ON bills(status);
+    CREATE INDEX IF NOT EXISTS idx_bills_created ON bills(created_at);
+    CREATE INDEX IF NOT EXISTS idx_bills_building ON bills(building);
+    CREATE INDEX IF NOT EXISTS idx_return_visits_status ON return_visits(status);
+    CREATE INDEX IF NOT EXISTS idx_return_visits_staff ON return_visits(staff_id);
+    CREATE INDEX IF NOT EXISTS idx_return_visits_scheduled ON return_visits(scheduled_at);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_articles(category);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_views ON knowledge_articles(view_count);
+    CREATE INDEX IF NOT EXISTS idx_self_service_owner ON self_service_records(owner_room);
+    CREATE INDEX IF NOT EXISTS idx_self_service_date ON self_service_records(created_at);
   `);
+
+  const orderCols = db.prepare("PRAGMA table_info(work_orders)").all() as { name: string }[];
+  const staffCols = db.prepare("PRAGMA table_info(staff)").all() as { name: string }[];
+
+  if (!orderCols.some(c => c.name === 'repair_start_time')) {
+    db.exec('ALTER TABLE work_orders ADD COLUMN repair_start_time TEXT');
+  }
+  if (!staffCols.some(c => c.name === 'comprehensive_satisfaction')) {
+    db.exec('ALTER TABLE staff ADD COLUMN comprehensive_satisfaction REAL DEFAULT 0');
+  }
 }
 
 export function seedData() {
@@ -378,6 +461,106 @@ export function seedData() {
   db.prepare("UPDATE work_orders SET material_cost = 36.0 WHERE id = 'o4'").run();
   db.prepare("UPDATE work_orders SET material_cost = 36.0 WHERE id = 'o5'").run();
   db.prepare("UPDATE work_orders SET material_cost = 72.0 WHERE id = 'o11'").run();
+
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-01T10:00:00Z' WHERE id = 'o1'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-02T11:00:00Z' WHERE id = 'o2'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-03T14:00:00Z' WHERE id = 'o3'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-05T15:00:00Z' WHERE id = 'o4'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-07T19:30:00Z' WHERE id = 'o5'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-10T09:00:00Z' WHERE id = 'o6'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-12T14:00:00Z' WHERE id = 'o7'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-15T11:00:00Z' WHERE id = 'o8'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-20T10:00:00Z' WHERE id = 'o9'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-05-25T16:00:00Z' WHERE id = 'o10'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-06-01T10:30:00Z' WHERE id = 'o11'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-06-03T09:00:00Z' WHERE id = 'o12'").run();
+  db.prepare("UPDATE work_orders SET repair_start_time = '2026-06-03T09:00:00Z' WHERE id = 'o13'").run();
+
+  const insertBill = db.prepare(`
+    INSERT INTO bills (id, order_id, order_no, owner_room, building, labor_cost, material_cost, visit_fee, total_amount, labor_detail, status, paid_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const bills = [
+    ['b1', 'o1', 'WO202605010001', '1号楼1单元101', '1号楼', 325, 4, 15, 344, '{"startTime":"2026-05-01T10:00:00Z","endTime":"2026-05-01T16:30:00Z","durationHours":6.5,"hourlyRate":50,"subtotal":325}', 'paid', '2026-05-02T10:00:00Z', '2026-05-01T16:30:00Z'],
+    ['b2', 'o2', 'WO202605020002', '2号楼2单元302', '2号楼', 150, 25, 15, 190, '{"startTime":"2026-05-02T11:00:00Z","endTime":"2026-05-02T14:00:00Z","durationHours":3,"hourlyRate":50,"subtotal":150}', 'paid', '2026-05-03T09:00:00Z', '2026-05-02T14:00:00Z'],
+    ['b3', 'o3', 'WO202605030003', '3号楼1单元503', '3号楼', 100, 0, 15, 115, '{"startTime":"2026-05-03T14:00:00Z","endTime":"2026-05-04T10:00:00Z","durationHours":2,"hourlyRate":50,"subtotal":100}', 'paid', '2026-05-05T14:00:00Z', '2026-05-04T10:00:00Z'],
+    ['b4', 'o4', 'WO202605050004', '1号楼3单元801', '1号楼', 125, 36, 15, 176, '{"startTime":"2026-05-05T15:00:00Z","endTime":"2026-05-06T15:00:00Z","durationHours":2.5,"hourlyRate":50,"subtotal":125}', 'paid', '2026-05-07T10:00:00Z', '2026-05-06T15:00:00Z'],
+    ['b5', 'o5', 'WO202605070005', '5号楼1单元202', '5号楼', 50, 36, 15, 101, '{"startTime":"2026-05-07T19:30:00Z","endTime":"2026-05-07T20:30:00Z","durationHours":1,"hourlyRate":50,"subtotal":50}', 'paid', '2026-05-08T09:00:00Z', '2026-05-07T20:30:00Z'],
+    ['b6', 'o6', 'WO202605100006', '6号楼2单元405', '6号楼', 150, 0, 15, 165, '{"startTime":"2026-05-10T09:00:00Z","endTime":"2026-05-10T12:00:00Z","durationHours":3,"hourlyRate":50,"subtotal":150}', 'paid', '2026-05-11T10:00:00Z', '2026-05-10T12:00:00Z'],
+    ['b7', 'o7', 'WO202605120007', '2号楼1单元1203', '2号楼', 150, 0, 15, 165, '{"startTime":"2026-05-12T14:00:00Z","endTime":"2026-05-12T17:00:00Z","durationHours":3,"hourlyRate":50,"subtotal":150}', 'unpaid', null, '2026-05-12T17:00:00Z'],
+    ['b8', 'o8', 'WO202605150008', '7号楼3单元601', '7号楼', 125, 0, 15, 140, '{"startTime":"2026-05-15T11:00:00Z","endTime":"2026-05-16T11:00:00Z","durationHours":2.5,"hourlyRate":50,"subtotal":125}', 'unpaid', null, '2026-05-16T11:00:00Z'],
+    ['b9', 'o9', 'WO202605200009', '4号楼2单元904', '4号楼', 150, 0, 15, 165, '{"startTime":"2026-05-20T10:00:00Z","endTime":"2026-05-21T16:00:00Z","durationHours":3,"hourlyRate":50,"subtotal":150}', 'unpaid', null, '2026-05-21T16:00:00Z'],
+    ['b10', 'o10', 'WO202605250010', '8号楼1单元302', '8号楼', 75, 0, 15, 90, '{"startTime":"2026-05-25T16:00:00Z","endTime":"2026-05-26T10:00:00Z","durationHours":1.5,"hourlyRate":50,"subtotal":75}', 'unpaid', null, '2026-05-26T10:00:00Z']
+  ];
+
+  for (const b of bills) {
+    insertBill.run(...b);
+  }
+
+  const insertReturnVisit = db.prepare(`
+    INSERT INTO return_visits (id, order_id, order_no, owner_room, staff_id, staff_name, quality_score, attitude_score, speed_score, has_remaining_issue, remaining_issue_desc, suggestion, scheduled_at, completed_at, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const returnVisits = [
+    ['rv1', 'o1', 'WO202605010001', '1号楼1单元101', 's1', '张师傅', 5, 5, 4, 0, null, '服务很好，师傅很专业', '2026-05-04T00:00:00Z', '2026-05-04T10:30:00Z', 'completed', '2026-05-01T16:30:00Z'],
+    ['rv2', 'o2', 'WO202605020002', '2号楼2单元302', 's1', '张师傅', 4, 5, 5, 0, null, '响应速度很快', '2026-05-05T00:00:00Z', '2026-05-05T14:00:00Z', 'completed', '2026-05-02T14:00:00Z'],
+    ['rv3', 'o3', 'WO202605030003', '3号楼1单元503', 's2', '李师傅', 5, 4, 4, 0, null, '整体满意', '2026-05-06T00:00:00Z', '2026-05-06T09:00:00Z', 'completed', '2026-05-04T10:00:00Z'],
+    ['rv4', 'o4', 'WO202605050004', '1号楼3单元801', 's3', '王师傅', 4, 4, 3, 1, '还有一点小裂纹', '希望能更仔细一些', '2026-05-08T00:00:00Z', '2026-05-08T15:00:00Z', 'completed', '2026-05-06T15:00:00Z'],
+    ['rv5', 'o5', 'WO202605070005', '5号楼1单元202', 's1', '张师傅', 5, 5, 5, 0, null, '晚上也能及时处理，点赞', '2026-05-10T00:00:00Z', '2026-05-10T10:00:00Z', 'completed', '2026-05-07T20:30:00Z'],
+    ['rv6', 'o6', 'WO202605100006', '6号楼2单元405', 's3', '王师傅', 5, 5, 5, 0, null, '紧急情况处理到位', '2026-05-13T00:00:00Z', '2026-05-13T11:00:00Z', 'completed', '2026-05-10T12:00:00Z'],
+    ['rv7', 'o7', 'WO202605120007', '2号楼1单元1203', 's1', '张师傅', 0, 0, 0, 0, null, null, '2026-05-15T00:00:00Z', null, 'pending', '2026-05-12T17:00:00Z'],
+    ['rv8', 'o8', 'WO202605150008', '7号楼3单元601', 's2', '李师傅', 0, 0, 0, 0, null, null, '2026-05-18T00:00:00Z', null, 'pending', '2026-05-16T11:00:00Z'],
+    ['rv9', 'o9', 'WO202605200009', '4号楼2单元904', 's3', '王师傅', 0, 0, 0, 0, null, null, '2026-05-23T00:00:00Z', null, 'pending', '2026-05-21T16:00:00Z'],
+    ['rv10', 'o10', 'WO202605250010', '8号楼1单元302', 's2', '李师傅', 0, 0, 0, 0, null, null, '2026-05-28T00:00:00Z', null, 'pending', '2026-05-26T10:00:00Z']
+  ];
+
+  for (const rv of returnVisits) {
+    insertReturnVisit.run(...rv);
+  }
+
+  const insertKnowledge = db.prepare(`
+    INSERT INTO knowledge_articles (id, title, category, content, keywords, view_count, helpful_count, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const knowledgeArticles = [
+    ['k1', '水龙头漏水的常见原因及简单处理方法', 'water', '# 水龙头漏水的常见原因及简单处理方法\n\n## 常见原因\n\n1. **阀芯老化** - 使用时间长了，阀芯密封圈磨损\n2. **接口松动** - 水龙头与水管连接处螺丝松动\n3. **水压过高** - 水压过大导致密封不严\n\n## 简单处理方法\n\n### 1. 阀芯更换\n- 关闭进水阀门\n- 用扳手拧开水龙头顶部\n- 取出旧阀芯，更换新的同型号阀芯\n\n### 2. 拧紧接口\n- 使用扳手适当拧紧连接螺帽\n- 注意不要用力过猛导致滑牙\n\n### 3. 调节水压\n- 可以在进水口安装减压阀\n\n> 如果以上方法无法解决问题，请提交工单安排专业维修人员上门处理。', '["水龙头","漏水","阀芯","水管","维修"]', 128, 45, 'admin', '2026-05-01T00:00:00Z', '2026-05-01T00:00:00Z'],
+    ['k2', '电路跳闸的应急处理步骤', 'electric', '# 电路跳闸的应急处理步骤\n\n## 安全第一\n\n⚠️ 处理电路问题前，请确保双手干燥，最好戴上绝缘手套。\n\n## 步骤\n\n1. **切断所有电器电源**\n   - 拔掉所有正在使用的电器插头\n\n2. **找到配电箱**\n   - 通常位于入户门附近或厨房\n\n3. **检查断路器**\n   - 找到跳闸的断路器（开关位置在中间）\n   - 先将其完全推到"关"的位置\n   - 再推到"开"的位置\n\n4. **逐步恢复供电**\n   - 先插一个小功率电器测试\n   - 如果正常，再逐步恢复其他电器\n\n## 何时需要专业维修\n\n- 多次重复跳闸\n- 开关有焦黑痕迹\n- 有明显焦糊味\n- 断路器推不上去\n\n遇到以上情况，请立即提交工单。', '["跳闸","电路","断电","断路器","配电箱"]', 96, 38, 'admin', '2026-05-02T00:00:00Z', '2026-05-02T00:00:00Z'],
+    ['k3', '门窗密封条老化的判断与临时处理', 'door_window', '# 门窗密封条老化的判断与临时处理\n\n## 判断方法\n\n1. **观察外观**\n   - 密封条是否有裂纹、变形\n   - 是否变硬、失去弹性\n\n2. **手感检查**\n   - 用手按压，看是否能快速回弹\n   - 是否有粘手或掉渣现象\n\n3. **使用感受**\n   - 开关门窗时是否有异响\n   - 是否感觉漏风\n   - 下雨天是否渗水\n\n## 临时处理方法\n\n### 1. 清洁保养\n- 用温水加少量清洁剂擦拭\n- 晾干后涂抹少量滑石粉\n\n### 2. 临时密封\n- 漏风处可用胶带临时粘贴\n- 冬季可贴密封条\n\n## 专业更换\n\n如果密封条严重老化，建议提交工单更换全新密封条。', '["密封条","门窗","漏风","老化","更换"]', 72, 28, 'admin', '2026-05-03T00:00:00Z', '2026-05-03T00:00:00Z'],
+    ['k4', '楼道灯不亮的排查方法', 'public', '# 楼道灯不亮的排查方法\n\n## 常见原因\n\n1. 灯泡烧坏\n2. 开关故障\n3. 线路问题\n4. 整栋楼停电\n\n## 排查步骤\n\n1. **检查其他楼层**\n   - 看看其他楼层的灯是否正常\n   - 如果都不亮，可能是公共线路问题\n\n2. **检查开关**\n   - 多次按动开关，听是否有正常的"咔哒"声\n\n3. **观察灯泡**\n   - 看灯丝是否断裂\n   - 灯泡是否发黑\n\n## 处理建议\n\n- 如果是单个灯泡问题，可联系物业更换\n- 如果是多个灯不亮或整栋楼问题，请提交紧急工单\n\n> 注意：公共照明属于物业负责范围，请勿自行拆卸维修，以免发生危险。', '["楼道灯","公共照明","灯泡","开关","线路"]', 85, 32, 'admin', '2026-05-04T00:00:00Z', '2026-05-04T00:00:00Z'],
+    ['k5', '空调插座接触不良的解决办法', 'electric', '# 空调插座接触不良的解决办法\n\n## 症状\n\n1. 空调时开时关\n2. 插头有火花\n3. 插头发热严重\n4. 显示"电源故障"提示\n\n## 紧急处理\n\n⚠️ 如果发现插头发热严重或有火花，请立即拔掉插头，停止使用！\n\n## 检查步骤\n\n1. **检查插头**\n   - 插头插片是否变形、氧化\n   - 用砂纸轻轻打磨氧化层\n\n2. **检查插座**\n   - 插座内部是否有焦黑痕迹\n   - 插孔是否松动\n\n3. **测试其他电器**\n   - 用其他电器测试该插座\n   - 看看是否也有同样问题\n\n## 安全提示\n\n- 不要用湿手插拔插头\n- 发现问题及时报修，不要凑合使用\n- 空调属于大功率电器，建议使用专用插座', '["空调","插座","接触不良","插头","电源"]', 65, 22, 'admin', '2026-05-05T00:00:00Z', '2026-05-05T00:00:00Z'],
+    ['k6', '卫生间地漏反味的原因及处理', 'water', '# 卫生间地漏反味的原因及处理\n\n## 常见原因\n\n1. **水封干涸** - 最常见原因\n2. **地漏故障** - 防臭装置损坏\n3. **管道问题** - 排水管堵塞或破裂\n\n## 处理方法\n\n### 1. 补水法（最简单）\n- 每天往地漏倒一杯水\n- 保持水封水位，防止异味上返\n\n### 2. 清洁地漏\n- 取出地漏盖板\n- 清理滤网中的毛发和杂物\n- 用热水冲洗\n\n### 3. 更换防臭地漏\n- 如果地漏老旧，建议更换\n- 选择带水封或硅胶芯的防臭地漏\n\n## 预防措施\n\n- 定期（每周）往地漏倒水\n- 安装地漏滤网，防止毛发进入\n- 不要将油污倒入地漏', '["地漏","反味","卫生间","下水管道","堵塞"]', 156, 68, 'admin', '2026-05-06T00:00:00Z', '2026-05-06T00:00:00Z']
+  ];
+
+  for (const ka of knowledgeArticles) {
+    insertKnowledge.run(...ka);
+  }
+
+  const insertSelfService = db.prepare(`
+    INSERT INTO self_service_records (id, owner_room, query_text, matched_article_id, matched_article_title, is_resolved, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const selfServiceRecords = [
+    ['ssr1', '1号楼1单元101', '水龙头漏水', 'k1', '水龙头漏水的常见原因及简单处理方法', 1, '2026-05-02T09:00:00Z'],
+    ['ssr2', '2号楼2单元302', '跳闸了怎么办', 'k2', '电路跳闸的应急处理步骤', 1, '2026-05-03T14:00:00Z'],
+    ['ssr3', '3号楼1单元503', '窗户漏风', 'k3', '门窗密封条老化的判断与临时处理', 0, '2026-05-04T10:00:00Z'],
+    ['ssr4', '5号楼1单元202', '楼道灯不亮', 'k4', '楼道灯不亮的排查方法', 1, '2026-05-05T19:00:00Z'],
+    ['ssr5', '1号楼2单元403', '地漏有味', 'k6', '卫生间地漏反味的原因及处理', 1, '2026-05-06T08:00:00Z'],
+    ['ssr6', '2号楼3单元505', '空调插不进去', 'k5', '空调插座接触不良的解决办法', 0, '2026-05-07T15:00:00Z'],
+    ['ssr7', '4号楼2单元904', '厕所反味', 'k6', '卫生间地漏反味的原因及处理', 1, '2026-05-08T11:00:00Z'],
+    ['ssr8', '6号楼2单元405', '灯泡坏了', 'k4', '楼道灯不亮的排查方法', 0, '2026-05-09T20:00:00Z']
+  ];
+
+  for (const ssr of selfServiceRecords) {
+    insertSelfService.run(...ssr);
+  }
+
+  db.prepare("UPDATE staff SET comprehensive_satisfaction = 4.7 WHERE id = 's1'").run();
+  db.prepare("UPDATE staff SET comprehensive_satisfaction = 4.3 WHERE id = 's2'").run();
+  db.prepare("UPDATE staff SET comprehensive_satisfaction = 4.5 WHERE id = 's3'").run();
 }
 
 export function checkTimeout() {

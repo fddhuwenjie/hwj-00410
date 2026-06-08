@@ -65,6 +65,48 @@
             <template #title>消耗统计</template>
           </el-menu-item>
         </el-sub-menu>
+        <el-sub-menu index="finance">
+          <template #title>
+            <el-icon><Money /></el-icon>
+            <span>费用管理</span>
+          </template>
+          <el-menu-item index="/admin/bills">
+            <el-icon><Document /></el-icon>
+            <template #title>账单管理</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/revenue-report">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>营收报表</template>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="return-visits">
+          <template #title>
+            <el-icon><ChatLineRound /></el-icon>
+            <span>回访管理</span>
+          </template>
+          <el-menu-item index="/admin/return-visits">
+            <el-icon><ChatDotRound /></el-icon>
+            <template #title>回访记录</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/return-visit-stats">
+            <el-icon><DataBoard /></el-icon>
+            <template #title>回访统计</template>
+          </el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="knowledge">
+          <template #title>
+            <el-icon><Collection /></el-icon>
+            <span>知识库管理</span>
+          </template>
+          <el-menu-item index="/admin/knowledge">
+            <el-icon><Document /></el-icon>
+            <template #title>文章管理</template>
+          </el-menu-item>
+          <el-menu-item index="/admin/knowledge-stats">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>知识统计</template>
+          </el-menu-item>
+        </el-sub-menu>
       </el-menu>
       <div class="p-4 border-t border-primary-700">
         <el-button
@@ -145,7 +187,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Bell, User, SwitchButton, DataBoard, Document, Tickets, Box, Goods, TrendCharts } from '@element-plus/icons-vue'
+import { Bell, User, SwitchButton, DataBoard, Document, Tickets, Box, Goods, TrendCharts, Money, ChatLineRound, ChatDotRound, Collection, DataAnalysis } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const userStore = useUserStore()
@@ -161,6 +203,15 @@ const activeMenu = computed(() => {
   }
   if (path.startsWith('/admin/material-') || path.startsWith('/admin/materials')) {
     return '/admin/materials'
+  }
+  if (path.startsWith('/admin/bills') || path.startsWith('/admin/revenue-report')) {
+    return '/admin/bills'
+  }
+  if (path.startsWith('/admin/return-visit')) {
+    return '/admin/return-visits'
+  }
+  if (path.startsWith('/admin/knowledge')) {
+    return '/admin/knowledge'
   }
   return path
 })
@@ -198,6 +249,36 @@ const breadcrumbMap: Record<string, { name: string; path: string }[]> = {
     { name: '仪表盘', path: '/admin' },
     { name: '物料管理', path: '' },
     { name: '消耗统计', path: '/admin/material-stats' }
+  ],
+  '/admin/bills': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '费用管理', path: '' },
+    { name: '账单管理', path: '/admin/bills' }
+  ],
+  '/admin/revenue-report': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '费用管理', path: '' },
+    { name: '营收报表', path: '/admin/revenue-report' }
+  ],
+  '/admin/return-visits': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '回访管理', path: '' },
+    { name: '回访记录', path: '/admin/return-visits' }
+  ],
+  '/admin/return-visit-stats': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '回访管理', path: '' },
+    { name: '回访统计', path: '/admin/return-visit-stats' }
+  ],
+  '/admin/knowledge': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '知识库管理', path: '' },
+    { name: '文章管理', path: '/admin/knowledge' }
+  ],
+  '/admin/knowledge-stats': [
+    { name: '仪表盘', path: '/admin' },
+    { name: '知识库管理', path: '' },
+    { name: '知识统计', path: '/admin/knowledge-stats' }
   ]
 }
 

@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { HomeFilled, Edit, Bell, ArrowDown, SwitchButton, Plus, Reading, Expand, Fold } from '@element-plus/icons-vue'
+import { HomeFilled, Edit, Bell, ArrowDown, SwitchButton, Plus, Reading, Expand, Fold, Money, Collection, Tools } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -77,6 +77,8 @@ const userStore = useUserStore()
 const navItems = [
   { path: '/owner', label: '首页', icon: HomeFilled },
   { path: '/owner/submit', label: '报修', icon: Edit },
+  { path: '/owner/bills', label: '账单', icon: Money },
+  { path: '/owner/knowledge', label: '知识', icon: Collection },
   { path: '/owner/announcements', label: '公告', icon: Bell }
 ]
 

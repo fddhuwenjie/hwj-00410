@@ -57,6 +57,7 @@ export interface WorkOrder {
   createdAt: string;
   updatedAt: string;
   assignedAt?: string;
+  repairStartTime?: string;
   completedAt?: string;
   rating?: number;
   ratingComment?: string;
@@ -66,6 +67,8 @@ export interface WorkOrder {
   materialUsages: MaterialUsage[];
   progressUpdates: ProgressUpdate[];
   statusHistory: StatusHistory[];
+  bill?: Bill;
+  returnVisit?: ReturnVisit;
 }
 
 export interface Staff {
@@ -77,6 +80,7 @@ export interface Staff {
   currentOrderCount: number;
   completedOrderCount: number;
   avgRating: number;
+  comprehensiveSatisfaction: number;
   createdAt: string;
 }
 
@@ -272,3 +276,109 @@ export const SLATimeLimits: Record<UrgencyLevel, { response: number; resolve: nu
 };
 
 export const MaterialCategoryList: MaterialCategory[] = ['管件', '电料', '五金'];
+
+export type KnowledgeCategory = 'water' | 'electric' | 'door_window' | 'public' | 'other';
+
+export const KnowledgeCategoryMap: Record<KnowledgeCategory, string> = {
+  water: '水电',
+  electric: '电路',
+  door_window: '门窗',
+  public: '公共设施',
+  other: '其他'
+};
+
+export interface LaborDetail {
+  startTime: string;
+  endTime: string;
+  durationHours: number;
+  hourlyRate: number;
+  subtotal: number;
+}
+
+export interface Bill {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  ownerRoom: string;
+  building: string;
+  laborCost: number;
+  materialCost: number;
+  visitFee: number;
+  totalAmount: number;
+  laborDetail: LaborDetail;
+  materialDetails: MaterialUsage[];
+  status: 'unpaid' | 'paid';
+  paidAt?: string;
+  createdAt: string;
+}
+
+export interface ReturnVisit {
+  id: string;
+  orderId: string;
+  orderNo: string;
+  ownerRoom: string;
+  staffId: string;
+  staffName: string;
+  qualityScore: number;
+  attitudeScore: number;
+  speedScore: number;
+  hasRemainingIssue: boolean;
+  remainingIssueDesc?: string;
+  suggestion?: string;
+  scheduledAt: string;
+  completedAt?: string;
+  status: 'pending' | 'completed';
+  createdAt: string;
+}
+
+export interface KnowledgeArticle {
+  id: string;
+  title: string;
+  category: KnowledgeCategory;
+  content: string;
+  keywords: string[];
+  viewCount: number;
+  helpfulCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyRevenueStats {
+  totalRevenue: number;
+  laborRevenue: number;
+  materialRevenue: number;
+  visitFeeRevenue: number;
+  byBuilding: { building: string; amount: number }[];
+  byDate: { date: string; amount: number }[];
+}
+
+export interface ReturnVisitStats {
+  totalVisits: number;
+  completedVisits: number;
+  pendingVisits: number;
+  completionRate: number;
+  avgQualityScore: number;
+  avgAttitudeScore: number;
+  avgSpeedScore: number;
+  avgOverallScore: number;
+  byStaff: {
+    staffId: string;
+    staffName: string;
+    avgOverallScore: number;
+    visitCount: number;
+  }[];
+}
+
+export interface KnowledgeStats {
+  totalArticles: number;
+  totalViews: number;
+  totalHelpful: number;
+  selfServiceCount: number;
+  totalConsultations: number;
+  selfServiceRate: number;
+  topArticles: (KnowledgeArticle & { matchScore?: number })[];
+}
+
+export const HOURLY_RATE = 50;
+export const VISIT_FEE = 15;

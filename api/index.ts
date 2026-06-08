@@ -20,6 +20,9 @@ import notificationRoutes from './routes/notifications';
 import buildingRoutes from './routes/buildings';
 import inspectionRoutes from './routes/inspections';
 import materialRoutes from './routes/materials';
+import knowledgeRoutes from './routes/knowledge';
+import billRoutes from './routes/bills';
+import returnVisitRoutes from './routes/returnVisits';
 
 setInterval(() => {
   checkTimeout();
@@ -40,6 +43,9 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/buildings', buildingRoutes);
 app.use('/api/inspections', inspectionRoutes);
 app.use('/api/materials', materialRoutes);
+app.use('/api/knowledge', knowledgeRoutes);
+app.use('/api/bills', billRoutes);
+app.use('/api/return-visits', returnVisitRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db';
 import { v4 as uuidv4 } from 'uuid';
-import { generateOrderNo, addStatusHistory, addNotification, mapOrderRow, toJsonField, recommendStaff, setOrderSLADeadlines } from '../utils';
+import { generateOrderNo, addStatusHistory, addNotification, mapOrderRow, toJsonField, recommendStaff, setOrderSLADeadlines, generateBill, generateReturnVisit } from '../utils';
 import type { WorkOrder, OrderStatus, RepairType, UrgencyLevel } from '@shared/types';
 
 const router = Router();
@@ -111,8 +111,8 @@ router.put('/:id/status', (req, res) => {
   let sql = 'UPDATE work_orders SET status = ?, updated_at = ?';
   
   if (status === 'repairing') {
-    sql += ', assigned_at = COALESCE(assigned_at, ?), first_response_at = COALESCE(first_response_at, ?)';
-    updates.push(now, now);
+    sql += ', assigned_at = COALESCE(assigned_at, ?), first_response_at = COALESCE(first_response_at, ?), repair_start_time = COALESCE(repair_start_time, ?)';
+    updates.push(now, now, now);
   }
   if (status === 'completed' || status === 'checking') {
     sql += ', completed_at = ?, resolved_at = ?';
@@ -126,6 +126,10 @@ router.put('/:id/status', (req, res) => {
 
   if (status === 'completed' && orderRow.staff_id) {
     db.prepare('UPDATE staff SET current_order_count = current_order_count - 1, completed_order_count = completed_order_count + 1 WHERE id = ?').run(orderRow.staff_id);
+  }
+
+  if (status === 'completed') {
+    generateBill(id);
   }
 
   addStatusHistory(id, status as OrderStatus, remark);
@@ -191,6 +195,10 @@ router.put('/:id/accept', (req, res) => {
     db.prepare('UPDATE staff SET current_order_count = current_order_count - 1, completed_order_count = completed_order_count + 1 WHERE id = ?').run(orderRow.staff_id);
   }
 
+  if (accepted) {
+    generateBill(id);
+  }
+
   if (!accepted && orderRow.staff_id) {
     const staffRow = db.prepare('SELECT * FROM staff WHERE id = ?').get(orderRow.staff_id) as any;
     addNotification(staffRow.work_no, 'staff', 'order_update', '工单被驳回', `工单${orderRow.order_no}被业主驳回，请重新维修`, id);
@@ -226,6 +234,8 @@ router.post('/:id/rate', (req, res) => {
       orderRow.staff_id
     );
   }
+
+  generateReturnVisit(id);
 
   const order = db.prepare('SELECT * FROM work_orders WHERE id = ?').get(id) as any;
   res.json(mapOrderRow(order));

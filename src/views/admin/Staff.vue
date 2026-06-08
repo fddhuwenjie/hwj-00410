@@ -47,6 +47,18 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column label="综合满意度" width="160">
+          <template #default="{ row }">
+            <div class="flex items-center gap-1">
+              <el-rate v-model="row.comprehensiveSatisfaction" disabled :max="5" size="small" show-score text-color="#f59e0b" />
+              <el-tag v-if="row.comprehensiveSatisfaction >= 4.5" type="success" size="small">优秀</el-tag>
+              <el-tag v-else-if="row.comprehensiveSatisfaction >= 4" type="primary" size="small">良好</el-tag>
+              <el-tag v-else-if="row.comprehensiveSatisfaction >= 3" type="warning" size="small">一般</el-tag>
+              <el-tag v-else-if="row.comprehensiveSatisfaction > 0" type="danger" size="small">待提升</el-tag>
+              <el-tag v-else type="info" size="small">暂无</el-tag>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column label="创建时间" width="160">
           <template #default="{ row }">
             {{ formatDate(row.createdAt) }}

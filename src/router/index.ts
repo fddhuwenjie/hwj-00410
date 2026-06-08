@@ -39,6 +39,26 @@ const router = createRouter({
           path: 'announcements',
           name: 'OwnerAnnouncements',
           component: () => import('@/views/owner/Announcements.vue')
+        },
+        {
+          path: 'bills',
+          name: 'OwnerBills',
+          component: () => import('@/views/owner/Bills.vue')
+        },
+        {
+          path: 'bill/:id',
+          name: 'OwnerBillDetail',
+          component: () => import('@/views/owner/BillDetail.vue')
+        },
+        {
+          path: 'knowledge',
+          name: 'OwnerKnowledge',
+          component: () => import('@/views/owner/Knowledge.vue')
+        },
+        {
+          path: 'knowledge/:id',
+          name: 'OwnerKnowledgeDetail',
+          component: () => import('@/views/owner/KnowledgeDetail.vue')
         }
       ]
     },
@@ -92,6 +112,41 @@ const router = createRouter({
           path: 'material-stats',
           name: 'AdminMaterialStats',
           component: () => import('@/views/admin/MaterialStats.vue')
+        },
+        {
+          path: 'bills',
+          name: 'AdminBills',
+          component: () => import('@/views/admin/Bills.vue')
+        },
+        {
+          path: 'bills/:id',
+          name: 'AdminBillDetail',
+          component: () => import('@/views/owner/BillDetail.vue')
+        },
+        {
+          path: 'revenue-report',
+          name: 'AdminRevenueReport',
+          component: () => import('@/views/admin/RevenueReport.vue')
+        },
+        {
+          path: 'return-visits',
+          name: 'AdminReturnVisits',
+          component: () => import('@/views/admin/ReturnVisits.vue')
+        },
+        {
+          path: 'return-visit-stats',
+          name: 'AdminReturnVisitStats',
+          component: () => import('@/views/admin/ReturnVisitStats.vue')
+        },
+        {
+          path: 'knowledge',
+          name: 'AdminKnowledge',
+          component: () => import('@/views/admin/Knowledge.vue')
+        },
+        {
+          path: 'knowledge-stats',
+          name: 'AdminKnowledgeStats',
+          component: () => import('@/views/admin/KnowledgeStats.vue')
         }
       ]
     },

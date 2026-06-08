@@ -101,3 +101,7 @@ export function getUrgencyClass(urgency: UrgencyLevel): string {
   return `urgency-${urgency}`
 }
 
+export function formatCurrency(amount: number, currency = '¥'): string {
+  return `${currency}${amount.toFixed(2)}`
+}
+

@@ -81,8 +81,54 @@
             placeholder="请详细描述您遇到的问题，包括具体位置、现象等..."
             maxlength="500"
             show-word-limit
+            @input="handleDescriptionInput"
           />
         </el-form-item>
+      </div>
+
+      <div v-if="recommendedArticles.length > 0" class="mb-6">
+        <h3 class="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+          <el-icon><Reading /></el-icon>
+          可能相关的解决方案
+          <span class="text-xs text-gray-400 font-normal">（点击查看能否自助解决）</span>
+        </h3>
+        <div class="space-y-3">
+          <div
+            v-for="article in recommendedArticles"
+            :key="article.id"
+            class="p-4 bg-blue-50 border border-blue-100 rounded-xl cursor-pointer hover:bg-blue-100 transition-colors"
+            @click="viewKnowledgeArticle(article.id)"
+          >
+            <div class="flex items-start justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <el-tag size="small" type="primary" effect="light">{{ formatKnowledgeCategory(article.category) }}</el-tag>
+                <span class="text-xs text-gray-400">匹配度 {{ article.matchScore }}%</span>
+              </div>
+              <el-icon class="text-blue-500"><ArrowRight /></el-icon>
+            </div>
+            <h4 class="font-medium text-gray-800 mb-1">{{ article.title }}</h4>
+            <p class="text-xs text-gray-500 line-clamp-2">{{ article.content.replace(/[#*`]/g, '').substring(0, 100) }}...</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="selfServiceArticle" class="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+        <div class="flex items-center gap-2 mb-3">
+          <el-icon class="text-green-500" :size="20"><CircleCheck /></el-icon>
+          <span class="font-medium text-green-700">正在查看：{{ selfServiceArticle.title }}</span>
+        </div>
+        <div class="bg-white rounded-lg p-3 mb-3 max-h-48 overflow-y-auto">
+          <pre class="text-sm text-gray-700 whitespace-pre-wrap font-sans">{{ selfServiceArticle.content }}</pre>
+        </div>
+        <div class="flex gap-3">
+          <el-button type="success" class="flex-1" @click="confirmSelfService">
+            <el-icon><CircleCheck /></el-icon>
+            问题已解决，不用提交工单
+          </el-button>
+          <el-button class="flex-1" @click="selfServiceArticle = null">
+            没有解决，继续提交工单
+          </el-button>
+        </div>
       </div>
 
       <div class="mb-6">
@@ -158,23 +204,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import {
   Location, Tools, Edit, Warning, Picture, Close, Clock,
   WarningFilled, CircleCloseFilled, HotWater, Lightning,
-  Switch, Picture as PictureFilled, OfficeBuilding, Connection, MoreFilled
+  Switch, Picture as PictureFilled, OfficeBuilding, Connection, MoreFilled,
+  Reading, ArrowRight, CircleCheck
 } from '@element-plus/icons-vue'
 import { createOrder } from '@/api/orders'
 import { getBuildingData } from '@/api/buildings'
-import type { RepairType, UrgencyLevel, BuildingData } from '@shared/types'
+import { matchKnowledgeArticles, recordSelfService, getKnowledgeArticle } from '@/api/knowledge'
+import { useUserStore } from '@/stores/user'
+import type { RepairType, UrgencyLevel, BuildingData, KnowledgeArticle, KnowledgeCategory } from '@shared/types'
+import { KnowledgeCategoryMap } from '@shared/types'
 
 const router = useRouter()
+const userStore = useUserStore()
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const buildingData = ref<BuildingData[]>([])
 const photoUrlsText = ref('')
+const recommendedArticles = ref<(KnowledgeArticle & { matchScore: number })[]>([])
+const selfServiceArticle = ref<KnowledgeArticle | null>(null)
+const debounceTimer = ref<number | null>(null)
 
 const form = reactive({
   building: '',
@@ -184,6 +238,10 @@ const form = reactive({
   description: '',
   urgency: 'normal' as UrgencyLevel
 })
+
+function formatKnowledgeCategory(category: KnowledgeCategory): string {
+  return KnowledgeCategoryMap[category] || category
+}
 
 const repairTypes = [
   { label: '水管', value: 'water' as RepairType, icon: HotWater },
@@ -228,6 +286,58 @@ function handleBuildingChange() {
 
 function handleUnitChange() {
   form.roomNo = ''
+}
+
+async function handleDescriptionInput() {
+  if (debounceTimer.value) {
+    clearTimeout(debounceTimer.value)
+  }
+  
+  if (form.description.length < 5) {
+    recommendedArticles.value = []
+    return
+  }
+  
+  debounceTimer.value = window.setTimeout(async () => {
+    try {
+      const query = form.repairType ? `${form.repairType} ${form.description}` : form.description
+      const results = await matchKnowledgeArticles(query)
+      recommendedArticles.value = results.map(r => ({
+        ...r,
+        matchScore: Math.min(r.matchScore * 5, 100)
+      }))
+    } catch (e) {
+      console.error('匹配知识库失败', e)
+    }
+  }, 500)
+}
+
+async function viewKnowledgeArticle(id: string) {
+  try {
+    const article = await getKnowledgeArticle(id)
+    selfServiceArticle.value = article
+  } catch (e) {
+    ElMessage.error('加载文章失败')
+  }
+}
+
+async function confirmSelfService() {
+  if (!selfServiceArticle.value) return
+  
+  try {
+    await recordSelfService({
+      ownerRoom: userStore.user?.room || '',
+      queryText: form.description,
+      matchedArticleId: selfServiceArticle.value.id,
+      matchedArticleTitle: selfServiceArticle.value.title,
+      isResolved: true
+    })
+    
+    ElMessage.success('感谢您的反馈！很高兴问题已解决')
+    router.push('/owner')
+  } catch (e) {
+    ElMessage.error('操作失败，请重试')
+  }
 }
 
 function handleImageError(event: Event, index: number) {
